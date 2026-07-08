@@ -1,0 +1,167 @@
+-- ====================================
+-- CREACIÓN DE TABLAS
+-- ====================================
+
+CREATE TABLE clientes (
+    id_cliente     INT PRIMARY KEY AUTO_INCREMENT,
+    razon_social   VARCHAR(150) NOT NULL,
+    identificacion VARCHAR(20)  NOT NULL UNIQUE,
+    tipo_id        ENUM('CC','NIT','CE','PAS') NOT NULL DEFAULT 'CC',
+    email          VARCHAR(150) NOT NULL,
+    direccion      VARCHAR(200),
+    telefono       VARCHAR(20),
+    estado         ENUM('activo','inactivo','bloqueado') NOT NULL DEFAULT 'activo',
+    fecha_registro DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE planes (
+    id_plan        INT PRIMARY KEY AUTO_INCREMENT,
+    codigo         VARCHAR(20) NOT NULL UNIQUE,
+    nombre         VARCHAR(100) NOT NULL,
+    descripcion    TEXT,
+    precio_base    DECIMAL(12,2) NOT NULL,
+    porcentaje_iva DECIMAL(5,2)  NOT NULL DEFAULT 19.00,
+    activo         BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+CREATE TABLE facturas (
+    id_factura     INT PRIMARY KEY AUTO_INCREMENT,
+    numero_factura VARCHAR(20) NOT NULL UNIQUE,
+    id_cliente     INT NOT NULL,
+    fecha_emision  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    fecha_vence    DATE,
+    subtotal       DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    valor_iva      DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    total          DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+    estado         ENUM('activa','anulada','pagada') NOT NULL DEFAULT 'activa',
+    observaciones  TEXT,
+    FOREIGN KEY (id_cliente) REFERENCES clientes(id_cliente)
+);
+
+CREATE TABLE lineas_factura (
+    id_linea        INT PRIMARY KEY AUTO_INCREMENT,
+    id_factura      INT NOT NULL,
+    id_plan         INT NOT NULL,
+    cantidad        INT NOT NULL DEFAULT 1,
+    precio_unitario DECIMAL(12,2) NOT NULL,
+    porcentaje_iva  DECIMAL(5,2)  NOT NULL,
+    FOREIGN KEY (id_factura) REFERENCES facturas(id_factura),
+    FOREIGN KEY (id_plan)    REFERENCES planes(id_plan)
+);
+
+CREATE TABLE historial_estados_factura (
+    id_historial    INT PRIMARY KEY AUTO_INCREMENT,
+    id_factura      INT NOT NULL,
+    estado_anterior ENUM('activa','anulada','pagada') NOT NULL,
+    estado_nuevo    ENUM('activa','anulada','pagada') NOT NULL,
+    fecha_cambio    DATETIME DEFAULT CURRENT_TIMESTAMP,
+    motivo          TEXT,
+    FOREIGN KEY (id_factura) REFERENCES facturas(id_factura)
+);
+
+-- ====================================
+-- DATOS DE PRUEBA
+-- ====================================
+
+INSERT INTO planes (codigo, nombre, descripcion, precio_base, porcentaje_iva) VALUES
+('LIN-BAS', 'Plan Básico',   'Acceso a cursos A1 y A2',              240000.00, 19.00),
+('LIN-EST', 'Plan Estándar', 'Acceso a cursos A1 hasta B1',           340000.00, 19.00),
+('LIN-PRE', 'Plan Premium',  'Acceso completo + preparación internacional', 1350000.00, 19.00);
+
+INSERT INTO clientes (razon_social, identificacion, tipo_id, email, direccion, telefono, estado) VALUES
+('María Fernanda Torres',  '52847391',    'CC',  'mftorres@gmail.com',        'Cra 5 #12-34, Bogotá',      '3101234567', 'activo'),
+('Inversiones Edu S.A.S.', '900847123',   'NIT', 'contacto@inversionesedu.co', 'Av El Dorado #68-95, Bogotá','6014567890', 'activo'),
+('Carlos Andrés Mejía',    '1020384756',  'CC',  'camejia@outlook.com',        'Cll 80 #45-12, Medellín',   '3209876543', 'activo'),
+('Laura Sofía Rincón',     '1075839201',  'CC',  'lsrincon@yahoo.com',         'Cll 15 #8-90, Zipaquirá',   '3157654321', 'inactivo'),
+('TechLearn Colombia Ltda.','830291847',  'NIT', 'admin@techlearn.co',          'Cra 15 #93-75, Bogotá',     '6017890123', 'activo');
+
+INSERT INTO facturas (numero_factura, id_cliente, fecha_vence, subtotal, valor_iva, total, estado) VALUES
+('FV-2026-0001', 1, '2026-07-31', 240000.00,  45600.00,  285600.00,  'activa'),
+('FV-2026-0002', 2, '2026-07-31', 1350000.00, 256500.00, 1606500.00, 'pagada'),
+('FV-2026-0003', 3, '2026-06-30', 340000.00,  64600.00,  404600.00,  'anulada'),
+('FV-2026-0004', 5, '2026-08-15', 340000.00,  64600.00,  404600.00,  'activa');
+
+INSERT INTO lineas_factura (id_factura, id_plan, cantidad, precio_unitario, porcentaje_iva) VALUES
+(1, 1, 1, 240000.00,  19.00),
+(2, 3, 1, 1350000.00, 19.00),
+(3, 2, 1, 340000.00,  19.00),
+(4, 2, 1, 340000.00,  19.00);
+
+INSERT INTO historial_estados_factura (id_factura, estado_anterior, estado_nuevo, motivo) VALUES
+(3, 'activa', 'anulada', 'Solicitud del cliente por cambio de plan');
+
+/*
+-- ====================================
+-- Seudocódigo: Función crearFactura(clienteId, itemsList)
+-- ====================================
+
+FUNCIÓN crearFactura(clienteId, itemsList):
+ 	// --- Capa de Repositorio: recuperar cliente ---
+	cliente = Repositorio.buscarClientePorId(clienteId)
+ 	// --- Capa de Negocio: validar estado del cliente ---
+	SI cliente.estado != 'activo' ENTONCES
+    	LANZAR Error('Cliente inactivo o bloqueado.')
+	FIN SI
+	subtotal = 0
+	lineas   = []
+ 	PARA CADA item EN itemsList:
+    	plan = Repositorio.buscarPlanPorId(item.planId)
+    	// --- Capa de Negocio: validar plan activo ---
+    	SI NOT plan.activo ENTONCES
+        	LANZAR Error('Plan no disponible: ' + plan.nombre)
+    	FIN SI
+    	// --- Capa de Negocio: cálculo IVA 19% ---
+    	subtotal_linea = item.cantidad * plan.precio_base
+    	iva_linea  	= subtotal_linea * 0.19
+    	subtotal  	+= subtotal_linea
+    	lineas.agregar({plan, item.cantidad,
+                    	plan.precio_base, 19.00})
+	FIN PARA
+	valor_iva = subtotal * 0.19
+	total     = subtotal + valor_iva
+	numero    = generarNumeroFactura()  // FV-YYYY-XXXX
+	// --- Capa de Repositorio: persistir ---
+	facturaId = Repositorio.guardarFactura(
+    	{numero, clienteId, subtotal, valor_iva, total}
+	)
+	PARA CADA linea EN lineas:
+        Repositorio.guardarLineaFactura(facturaId, linea)
+	FIN PARA
+	RETORNAR facturaId
+*/
+
+/*
+-- ====================================
+-- Seudocòdigo: Función anularFactura(facturaId, motivo)
+-- ====================================
+
+              FUNCIÓN anularFactura(facturaId, motivo):
+ 	// --- Capa de Repositorio: recuperar factura ---
+	factura = Repositorio.buscarFacturaPorId(facturaId)
+ 	// --- Capa de Negocio: regla crítica ---
+	SI factura.estado == 'anulada' ENTONCES
+    	LANZAR Error('Factura ya anulada. No se puede
+                 	modificar ni anular nuevamente.')
+	FIN SI
+ 	estadoAnterior = factura.estado
+ 	// --- Capa de Repositorio: actualizar + auditoría ---
+    Repositorio.actualizarEstadoFactura(facturaId, 'anulada')
+	Repositorio.registrarHistorial(
+    	facturaId, estadoAnterior, 'anulada', motivo
+	)
+ 	RETORNAR 'Factura ' + factura.numero_factura
+         	+ ' anulada exitosamente.'
+*/
+
+-- ====================================
+-- Consultas realizadas: 
+-- ====================================
+SELECT * FROM clientes;
+SELECT * FROM planes;
+SELECT * FROM facturas;
+SELECT f.numero_factura, c.razon_social, p.nombre AS plan,
+       f.subtotal, f.valor_iva, f.total, f.estado
+FROM facturas f
+JOIN clientes c ON f.id_cliente = c.id_cliente
+JOIN lineas_factura lf ON lf.id_factura = f.id_factura
+JOIN planes p ON lf.id_plan = p.id_plan;
